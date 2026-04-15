@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import { useTimesheet } from "@/context/timesheet-context";
 import { getDaySummary, formatDuration, formatCurrency } from "@/lib/time-utils";
 import { EntryList } from "./entry-list";
+import { AddEntryForm } from "./add-entry-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export function DayDetail({ date }: { date: Date }) {
@@ -23,6 +24,7 @@ export function DayDetail({ date }: { date: Date }) {
       </CardHeader>
       <CardContent>
         <EntryList entries={summary.entries} />
+        <AddEntryForm date={date} />
       </CardContent>
     </Card>
   );
