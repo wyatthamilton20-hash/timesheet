@@ -38,43 +38,41 @@ export function CalendarView() {
   const days = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
 
   return (
-    <div className="space-y-4">
-      {/* Calendar Grid */}
-      <div className="rounded-xl border bg-card p-4">
-        {/* Header */}
+    <div className="space-y-3">
+      <div className="rounded-xl border border-border/50 bg-card p-4 shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <Button
             variant="ghost"
             size="icon"
+            className="size-8 rounded-lg"
             onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
           >
-            <ChevronLeft className="size-5" />
+            <ChevronLeft className="size-4" />
           </Button>
-          <h2 className="text-lg font-semibold">
+          <h2 className="text-sm font-semibold tracking-tight">
             {format(currentMonth, "MMMM yyyy")}
           </h2>
           <Button
             variant="ghost"
             size="icon"
+            className="size-8 rounded-lg"
             onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
           >
-            <ChevronRight className="size-5" />
+            <ChevronRight className="size-4" />
           </Button>
         </div>
 
-        {/* Weekday headers */}
         <div className="grid grid-cols-7 mb-1">
           {WEEKDAYS.map((day) => (
             <div
               key={day}
-              className="text-center text-xs font-medium text-muted-foreground py-1"
+              className="text-center text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60 py-1"
             >
               {day}
             </div>
           ))}
         </div>
 
-        {/* Day grid */}
         <div className="grid grid-cols-7 gap-0.5">
           {days.map((day) => {
             const dayEntries = getEntriesForDate(state.entries, day);
@@ -98,7 +96,6 @@ export function CalendarView() {
         </div>
       </div>
 
-      {/* Day Detail */}
       <DayDetail date={selectedDate} />
     </div>
   );

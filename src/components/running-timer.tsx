@@ -15,11 +15,11 @@ export function RunningTimer() {
   const earnings = hours * state.hourlyRate;
 
   return (
-    <div className="flex flex-col items-center gap-1">
-      <div className="text-4xl font-mono font-bold tracking-wider">
+    <div className="flex flex-col items-center gap-0.5">
+      <div className="text-3xl sm:text-4xl font-mono font-bold tracking-wider text-foreground">
         {formatDurationLong(elapsed)}
       </div>
-      <div className="text-lg text-muted-foreground">
+      <div className="text-sm text-muted-foreground font-medium">
         {formatCurrency(earnings)} earned
       </div>
     </div>

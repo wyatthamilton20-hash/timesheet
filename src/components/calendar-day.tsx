@@ -1,6 +1,6 @@
 "use client";
 
-import { isToday, isSameDay } from "date-fns";
+import { isToday } from "date-fns";
 import { cn } from "@/lib/utils";
 
 interface CalendarDayCellProps {
@@ -20,39 +20,40 @@ export function CalendarDayCell({
 }: CalendarDayCellProps) {
   const today = isToday(date);
   const maxHours = 10;
-  const barHeight = Math.min(hoursWorked / maxHours, 1) * 100;
+  const intensity = Math.min(hoursWorked / maxHours, 1);
 
   return (
     <button
       onClick={onClick}
       className={cn(
-        "relative flex flex-col items-center justify-start p-1.5 h-16 md:h-20 rounded-lg transition-colors cursor-pointer",
-        isCurrentMonth ? "text-foreground" : "text-muted-foreground/40",
-        isSelected && "bg-primary/10 ring-2 ring-primary",
-        !isSelected && "hover:bg-muted",
-        today && !isSelected && "ring-1 ring-primary/50"
+        "relative flex flex-col items-center justify-start p-1.5 h-14 md:h-18 rounded-lg transition-all duration-150 cursor-pointer",
+        isCurrentMonth ? "text-foreground" : "text-muted-foreground/30",
+        isSelected && "bg-primary/10 ring-1 ring-primary/50",
+        !isSelected && "hover:bg-accent",
+        today && !isSelected && "bg-accent"
       )}
     >
       <span
         className={cn(
-          "text-xs md:text-sm font-medium",
+          "text-xs font-medium leading-none",
           today && "text-primary font-bold"
         )}
       >
         {date.getDate()}
       </span>
       {hoursWorked > 0 && isCurrentMonth && (
-        <>
-          <div className="flex-1 w-full flex items-end justify-center px-1 mt-1">
-            <div
-              className="w-full max-w-[24px] rounded-sm bg-emerald-500/80"
-              style={{ height: `${Math.max(barHeight, 15)}%` }}
-            />
-          </div>
-          <span className="text-[10px] text-muted-foreground leading-none">
-            {hoursWorked.toFixed(1)}h
+        <div className="flex-1 flex flex-col items-center justify-end gap-0.5 w-full mt-1">
+          <div
+            className="w-6 rounded-sm bg-primary/70 transition-all"
+            style={{
+              height: `${Math.max(intensity * 100, 20)}%`,
+              opacity: 0.4 + intensity * 0.6,
+            }}
+          />
+          <span className="text-[9px] font-medium text-muted-foreground leading-none">
+            {hoursWorked.toFixed(1)}
           </span>
-        </>
+        </div>
       )}
     </button>
   );

@@ -21,9 +21,8 @@ export function ExportButton() {
   }
 
   return (
-    <Button variant="outline" size="sm" onClick={handleExport}>
-      <Download className="size-4 mr-1.5" />
-      Export CSV
+    <Button variant="ghost" size="icon" onClick={handleExport} title="Export CSV">
+      <Download className="size-4" />
     </Button>
   );
 }

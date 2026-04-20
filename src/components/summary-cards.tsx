@@ -8,7 +8,6 @@ import {
   formatDuration,
   formatCurrency,
 } from "@/lib/time-utils";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Clock, Calendar, CalendarDays } from "lucide-react";
 
 export function SummaryCards() {
@@ -16,9 +15,9 @@ export function SummaryCards() {
 
   if (!mounted) {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="h-[120px] rounded-xl bg-muted animate-pulse" />
+          <div key={i} className="h-[100px] rounded-xl bg-muted animate-pulse" />
         ))}
       </div>
     );
@@ -53,20 +52,23 @@ export function SummaryCards() {
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
       {cards.map((card) => (
-        <Card key={card.title}>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">{card.title}</CardTitle>
-            <card.icon className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{card.duration}</div>
-            <div className="text-sm text-muted-foreground">
-              {card.earnings} &middot; {card.sessions} session{card.sessions !== 1 ? "s" : ""}
-            </div>
-          </CardContent>
-        </Card>
+        <div
+          key={card.title}
+          className="relative overflow-hidden rounded-xl border border-border/50 bg-card p-4 shadow-sm"
+        >
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              {card.title}
+            </span>
+            <card.icon className="size-4 text-muted-foreground/60" />
+          </div>
+          <div className="text-2xl font-bold tracking-tight">{card.duration}</div>
+          <div className="text-sm text-muted-foreground mt-1">
+            {card.earnings} &middot; {card.sessions} session{card.sessions !== 1 ? "s" : ""}
+          </div>
+        </div>
       ))}
     </div>
   );

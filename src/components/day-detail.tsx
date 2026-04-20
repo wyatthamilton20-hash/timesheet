@@ -5,27 +5,26 @@ import { useTimesheet } from "@/context/timesheet-context";
 import { getDaySummary, formatDuration, formatCurrency } from "@/lib/time-utils";
 import { EntryList } from "./entry-list";
 import { AddEntryForm } from "./add-entry-form";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export function DayDetail({ date }: { date: Date }) {
   const { state } = useTimesheet();
   const summary = getDaySummary(state.entries, date, state.hourlyRate);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between">
-          <span>{format(date, "EEEE, MMMM d, yyyy")}</span>
-          <div className="text-right text-sm font-normal">
-            <div className="font-semibold">{formatDuration(summary.totalMinutes)}</div>
-            <div className="text-muted-foreground">{formatCurrency(summary.earnings)}</div>
-          </div>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
+    <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden">
+      <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between">
+        <h3 className="text-sm font-semibold">
+          {format(date, "EEEE, MMMM d")}
+        </h3>
+        <div className="flex items-center gap-3 text-right">
+          <span className="text-sm font-semibold">{formatDuration(summary.totalMinutes)}</span>
+          <span className="text-xs text-muted-foreground">{formatCurrency(summary.earnings)}</span>
+        </div>
+      </div>
+      <div className="p-4">
         <EntryList entries={summary.entries} />
         <AddEntryForm date={date} />
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

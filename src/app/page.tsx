@@ -9,7 +9,7 @@ export default function Home() {
   return (
     <>
       <Header />
-      <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-6 space-y-6">
+      <main className="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 py-6 space-y-6">
         <ClockButton />
         <SummaryCards />
         <CalendarView />

@@ -26,39 +26,42 @@ export function ClockButton() {
 
   if (!mounted) {
     return (
-      <div className="flex flex-col items-center gap-6 py-8">
-        <div className="h-[120px] md:h-[160px] w-full max-w-md rounded-2xl bg-muted animate-pulse" />
+      <div className="flex flex-col items-center gap-4 py-6">
+        <div className="h-[88px] w-full max-w-sm rounded-2xl bg-muted animate-pulse" />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col items-center gap-6 py-8">
+    <div className="flex flex-col items-center gap-4 py-6">
       <button
         onClick={handleClick}
         className={`
-          relative flex items-center justify-center gap-3
-          min-h-[120px] md:min-h-[160px] w-full max-w-md
-          rounded-2xl text-2xl md:text-3xl font-bold
+          group relative flex items-center justify-center gap-3
+          h-[88px] w-full max-w-sm
+          rounded-2xl text-lg font-semibold
           transition-all duration-200 cursor-pointer
-          active:scale-[0.98]
+          active:scale-[0.97]
           ${
             isClockedIn
-              ? "bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/25 ring-2 ring-red-400 animate-pulse"
-              : "bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/25"
+              ? "bg-gradient-to-b from-red-500 to-red-600 text-white shadow-lg shadow-red-500/20 hover:shadow-xl hover:shadow-red-500/30"
+              : "bg-gradient-to-b from-primary to-primary/90 text-primary-foreground shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30"
           }
         `}
       >
         {isClockedIn ? (
           <>
-            <Square className="size-7" />
+            <Square className="size-5" />
             Clock Out
           </>
         ) : (
           <>
-            <Play className="size-7" />
+            <Play className="size-5" />
             Clock In
           </>
+        )}
+        {isClockedIn && (
+          <span className="absolute top-3 right-3 size-2.5 rounded-full bg-white/80 animate-pulse" />
         )}
       </button>
       <RunningTimer />

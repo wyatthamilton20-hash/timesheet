@@ -6,10 +6,15 @@ import {
   useReducer,
   useEffect,
   useState,
+  useCallback,
   type ReactNode,
 } from "react";
 import { type TimesheetState, type TimeEntry } from "@/lib/types";
 import { DEFAULT_RATE, STORAGE_KEY } from "@/lib/constants";
+
+interface AirtableEntry extends TimeEntry {
+  _airtableId?: string;
+}
 
 type Action =
   | { type: "CLOCK_IN"; payload: { id: string; clockIn: string } }
@@ -20,12 +25,17 @@ type Action =
   | { type: "CLEAR_ALL" }
   | { type: "HYDRATE"; payload: TimesheetState };
 
-const initialState: TimesheetState = {
+interface AirtableState {
+  entries: AirtableEntry[];
+  hourlyRate: number;
+}
+
+const initialState: AirtableState = {
   entries: [],
   hourlyRate: DEFAULT_RATE,
 };
 
-function reducer(state: TimesheetState, action: Action): TimesheetState {
+function reducer(state: AirtableState, action: Action): AirtableState {
   switch (action.type) {
     case "CLOCK_IN":
       return {
@@ -58,7 +68,7 @@ function reducer(state: TimesheetState, action: Action): TimesheetState {
       return {
         ...state,
         entries: state.entries.map((e) =>
-          e.id === action.payload.id ? action.payload : e
+          e.id === action.payload.id ? { ...action.payload, _airtableId: (e as AirtableEntry)._airtableId } : e
         ),
       };
     case "SET_RATE":
@@ -66,7 +76,7 @@ function reducer(state: TimesheetState, action: Action): TimesheetState {
     case "CLEAR_ALL":
       return { ...initialState, hourlyRate: state.hourlyRate };
     case "HYDRATE":
-      return action.payload;
+      return { ...state, entries: action.payload.entries as AirtableEntry[] };
     default:
       return state;
   }
@@ -84,33 +94,123 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [mounted, setMounted] = useState(false);
 
-  // Hydrate from localStorage on mount
+  // Load entries from Airtable on mount
   useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as TimesheetState;
-        dispatch({ type: "HYDRATE", payload: parsed });
+    async function loadEntries() {
+      try {
+        const res = await fetch("/api/entries");
+        const entries = await res.json();
+        dispatch({ type: "HYDRATE", payload: { entries, hourlyRate: state.hourlyRate } });
+      } catch (error) {
+        console.error("Error loading from Airtable:", error);
       }
-    } catch (error) {
-      console.error("Error hydrating from localStorage:", error);
+      // Load hourly rate from localStorage (it's just a setting, not data)
+      try {
+        const stored = window.localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed.hourlyRate) {
+            dispatch({ type: "SET_RATE", payload: parsed.hourlyRate });
+          }
+        }
+      } catch {}
+      setMounted(true);
     }
-    setMounted(true);
+    loadEntries();
   }, []);
 
-  // Sync to localStorage on every state change (after mount)
+  // Save hourly rate to localStorage (lightweight setting)
   useEffect(() => {
     if (mounted) {
       try {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      } catch (error) {
-        console.error("Error saving to localStorage:", error);
-      }
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ hourlyRate: state.hourlyRate }));
+      } catch {}
     }
-  }, [state, mounted]);
+  }, [state.hourlyRate, mounted]);
+
+  // Wrap dispatch to sync with Airtable
+  const syncedDispatch = useCallback(
+    async (action: Action) => {
+      dispatch(action);
+
+      try {
+        switch (action.type) {
+          case "CLOCK_IN": {
+            await fetch("/api/entries", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                id: action.payload.id,
+                clockIn: action.payload.clockIn,
+                clockOut: null,
+                note: "",
+              }),
+            });
+            // Refresh to get _airtableId
+            const res = await fetch("/api/entries");
+            const entries = await res.json();
+            dispatch({ type: "HYDRATE", payload: { entries, hourlyRate: state.hourlyRate } });
+            break;
+          }
+          case "CLOCK_OUT": {
+            const entry = state.entries.find((e) => e.id === action.payload.id) as AirtableEntry | undefined;
+            if (entry?._airtableId) {
+              await fetch("/api/entries", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  ...entry,
+                  clockOut: action.payload.clockOut,
+                }),
+              });
+            }
+            break;
+          }
+          case "DELETE_ENTRY": {
+            const toDelete = state.entries.find((e) => e.id === action.payload.id) as AirtableEntry | undefined;
+            if (toDelete?._airtableId) {
+              await fetch(`/api/entries?airtableId=${toDelete._airtableId}`, {
+                method: "DELETE",
+              });
+            }
+            break;
+          }
+          case "EDIT_ENTRY": {
+            const toEdit = state.entries.find((e) => e.id === action.payload.id) as AirtableEntry | undefined;
+            if (toEdit?._airtableId) {
+              await fetch("/api/entries", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  ...action.payload,
+                  _airtableId: toEdit._airtableId,
+                }),
+              });
+            }
+            break;
+          }
+          case "CLEAR_ALL": {
+            // Delete all entries from Airtable
+            for (const entry of state.entries) {
+              const e = entry as AirtableEntry;
+              if (e._airtableId) {
+                await fetch(`/api/entries?airtableId=${e._airtableId}`, {
+                  method: "DELETE",
+                });
+              }
+            }
+            break;
+          }
+        }
+      } catch (error) {
+        console.error("Error syncing with Airtable:", error);
+      }
+    },
+    [state.entries, state.hourlyRate]
+  );
 
   return (
-    <TimesheetContext.Provider value={{ state, dispatch, mounted }}>
+    <TimesheetContext.Provider value={{ state: state as TimesheetState, dispatch: syncedDispatch as unknown as React.Dispatch<Action>, mounted }}>
       {children}
     </TimesheetContext.Provider>
   );

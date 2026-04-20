@@ -51,14 +51,14 @@ export function EntryRow({ entry }: { entry: TimeEntry }) {
 
   if (editing) {
     return (
-      <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg border bg-card">
+      <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg bg-accent/50">
         <Input
           type="time"
           value={editClockIn}
           onChange={(e) => setEditClockIn(e.target.value)}
           className="w-28"
         />
-        <span className="text-muted-foreground">to</span>
+        <span className="text-xs text-muted-foreground">to</span>
         <Input
           type="time"
           value={editClockOut}
@@ -72,10 +72,10 @@ export function EntryRow({ entry }: { entry: TimeEntry }) {
           placeholder="Note..."
           className="flex-1 min-w-[100px]"
         />
-        <Button size="icon" variant="ghost" onClick={saveEdit}>
-          <Check className="size-4" />
+        <Button size="icon" variant="ghost" className="size-8" onClick={saveEdit}>
+          <Check className="size-4 text-primary" />
         </Button>
-        <Button size="icon" variant="ghost" onClick={() => setEditing(false)}>
+        <Button size="icon" variant="ghost" className="size-8" onClick={() => setEditing(false)}>
           <X className="size-4" />
         </Button>
       </div>
@@ -83,13 +83,14 @@ export function EntryRow({ entry }: { entry: TimeEntry }) {
   }
 
   return (
-    <div className="flex items-center gap-3 p-3 rounded-lg border bg-card">
+    <div className="group flex items-center gap-3 p-3 rounded-lg hover:bg-accent/50 transition-colors">
+      <div className="size-2 rounded-full bg-primary/60 shrink-0" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 text-sm">
           <span className="font-medium">
             {format(new Date(entry.clockIn), "h:mm a")}
           </span>
-          <span className="text-muted-foreground">-</span>
+          <span className="text-muted-foreground/50">&mdash;</span>
           <span className="font-medium">
             {entry.clockOut
               ? format(new Date(entry.clockOut), "h:mm a")
@@ -108,17 +109,17 @@ export function EntryRow({ entry }: { entry: TimeEntry }) {
           {formatCurrency(earnings)}
         </div>
       </div>
-      <div className="flex gap-1 shrink-0">
-        <Button size="icon" variant="ghost" className="size-8" onClick={startEdit}>
-          <Pencil className="size-3.5" />
+      <div className="flex gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+        <Button size="icon" variant="ghost" className="size-7" onClick={startEdit}>
+          <Pencil className="size-3" />
         </Button>
         <Button
           size="icon"
           variant="ghost"
-          className="size-8 text-destructive"
+          className="size-7 text-destructive"
           onClick={handleDelete}
         >
-          <Trash2 className="size-3.5" />
+          <Trash2 className="size-3" />
         </Button>
       </div>
     </div>
