@@ -7,6 +7,7 @@ import {
   endOfMonth,
   isWithinInterval,
   parseISO,
+  subDays,
 } from "date-fns";
 import type { TimeEntry, DaySummary, PeriodSummary } from "./types";
 
@@ -128,4 +129,15 @@ export function getWeekSummary(entries: TimeEntry[], rate: number) {
 export function getMonthSummary(entries: TimeEntry[], rate: number) {
   const now = new Date();
   return getPeriodSummary(entries, startOfMonth(now), endOfMonth(now), rate);
+}
+
+export function getLastNDaysSummary(
+  entries: TimeEntry[],
+  days: number,
+  rate: number
+) {
+  const now = new Date();
+  const start = startOfDay(subDays(now, days - 1));
+  const end = endOfDay(now);
+  return getPeriodSummary(entries, start, end, rate);
 }
