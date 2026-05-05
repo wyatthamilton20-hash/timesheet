@@ -6,10 +6,10 @@ import { useTimesheet } from "@/context/timesheet-context";
 import {
   DEFAULT_SETTINGS,
   type InvoiceSettings,
+  type InvoiceDownloadRecord,
   type PartyInfo,
   loadSettings,
   saveSettings,
-  nextInvoiceNumber,
   computeLineItems,
   termsToDueDate,
   entriesInRange,
@@ -21,7 +21,7 @@ import { getDurationMinutes, formatDuration, formatCurrency } from "@/lib/time-u
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Download, Plus, X } from "lucide-react";
+import { Download, Plus, Trash2, X } from "lucide-react";
 
 const UNTAGGED = "— Select job —";
 
@@ -38,11 +38,7 @@ export function InvoiceView() {
   useEffect(() => {
     const loaded = loadSettings();
     setSettings(loaded);
-    setInvoiceNumber(
-      loaded.lastInvoiceNumber
-        ? nextInvoiceNumber(loaded.lastInvoiceNumber, new Date())
-        : "2026-01"
-    );
+    setInvoiceNumber(loaded.lastInvoiceNumber || "2026-01");
     setHydrated(true);
   }, []);
 
@@ -119,7 +115,6 @@ export function InvoiceView() {
   const hasUntagged = lineItems.some((i) => i.job === "Untagged");
 
   async function handleDownload() {
-    update({ lastInvoiceNumber: invoiceNumber });
     await downloadInvoicePdf({
       number: invoiceNumber,
       invoiceDate: parseISO(invoiceDate),
@@ -131,6 +126,25 @@ export function InvoiceView() {
       taxRate: settings.taxRate,
       notes: settings.notes,
     });
+    const totalHours = lineItems.reduce((s, i) => s + i.hours, 0);
+    const record: InvoiceDownloadRecord = {
+      id: crypto.randomUUID(),
+      number: invoiceNumber,
+      invoiceDate,
+      periodStart,
+      periodEnd,
+      hours: Math.round(totalHours * 100) / 100,
+      total,
+      downloadedAt: new Date().toISOString(),
+    };
+    update({
+      lastInvoiceNumber: invoiceNumber,
+      downloads: [record, ...settings.downloads],
+    });
+  }
+
+  function removeDownload(id: string) {
+    update({ downloads: settings.downloads.filter((d) => d.id !== id) });
   }
 
   if (!mounted || !hydrated) {
@@ -167,7 +181,14 @@ export function InvoiceView() {
       {/* Invoice details */}
       <Section title="Invoice details">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Invoice #" value={invoiceNumber} onChange={setInvoiceNumber} />
+          <Field
+            label="Invoice #"
+            value={invoiceNumber}
+            onChange={(v) => {
+              setInvoiceNumber(v);
+              update({ lastInvoiceNumber: v });
+            }}
+          />
           <Field label="Invoice date" type="date" value={invoiceDate} onChange={setInvoiceDate} />
           <Field label="Period start" type="date" value={periodStart} onChange={setPeriodStart} />
           <Field label="Period end" type="date" value={periodEnd} onChange={setPeriodEnd} />
@@ -342,6 +363,54 @@ export function InvoiceView() {
           placeholder="Optional notes printed at the bottom of the invoice"
           className="w-full min-h-[80px] rounded-lg border border-border bg-background px-3 py-2 text-sm"
         />
+      </Section>
+
+      <Section title={`Download history (${settings.downloads.length})`}>
+        {settings.downloads.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No invoices downloaded yet. Each PDF you download will be logged here.
+          </p>
+        ) : (
+          <div className="rounded-lg border border-border/60 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 text-xs uppercase tracking-wider text-muted-foreground">
+                <tr>
+                  <th className="text-left px-3 py-2">Invoice #</th>
+                  <th className="text-left px-3 py-2">Period</th>
+                  <th className="text-right px-3 py-2 w-20">Hours</th>
+                  <th className="text-right px-3 py-2 w-28">Total</th>
+                  <th className="text-left px-3 py-2 w-44">Downloaded</th>
+                  <th className="w-10" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/60">
+                {settings.downloads.map((d) => (
+                  <tr key={d.id}>
+                    <td className="px-3 py-2 font-medium">{d.number}</td>
+                    <td className="px-3 py-2 text-muted-foreground">
+                      {d.periodStart} → {d.periodEnd}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono">{d.hours.toFixed(2)}</td>
+                    <td className="px-3 py-2 text-right font-mono">${d.total.toFixed(2)}</td>
+                    <td className="px-3 py-2 text-muted-foreground text-xs">
+                      {format(new Date(d.downloadedAt), "MMM d, yyyy h:mm a")}
+                    </td>
+                    <td className="px-1 py-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeDownload(d.id)}
+                        aria-label={`Remove ${d.number}`}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Section>
     </div>
   );

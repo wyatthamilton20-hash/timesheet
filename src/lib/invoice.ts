@@ -18,6 +18,18 @@ export interface InvoiceSettings {
   entryJobs: Record<string, string>;
   lastInvoiceNumber: string;
   notes: string;
+  downloads: InvoiceDownloadRecord[];
+}
+
+export interface InvoiceDownloadRecord {
+  id: string;
+  number: string;
+  invoiceDate: string;
+  periodStart: string;
+  periodEnd: string;
+  hours: number;
+  total: number;
+  downloadedAt: string;
 }
 
 export interface InvoiceLineItem {
@@ -49,6 +61,7 @@ export const DEFAULT_SETTINGS: InvoiceSettings = {
   entryJobs: {},
   lastInvoiceNumber: "",
   notes: "",
+  downloads: [],
 };
 
 const KEYWORD_MAP: Array<{ keyword: RegExp; job: string }> = [
@@ -78,6 +91,7 @@ export function loadSettings(): InvoiceSettings {
       to: { ...DEFAULT_SETTINGS.to, ...parsed.to },
       jobs: Array.isArray(parsed.jobs) && parsed.jobs.length ? parsed.jobs : DEFAULT_SETTINGS.jobs,
       entryJobs: parsed.entryJobs ?? {},
+      downloads: Array.isArray(parsed.downloads) ? parsed.downloads : [],
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -89,16 +103,6 @@ export function saveSettings(settings: InvoiceSettings) {
   try {
     window.localStorage.setItem(INVOICE_STORAGE_KEY, JSON.stringify(settings));
   } catch {}
-}
-
-export function nextInvoiceNumber(last: string, today: Date): string {
-  const year = today.getFullYear();
-  const match = last.match(/^(\d{4})-(\d+)$/);
-  if (match && parseInt(match[1], 10) === year) {
-    const next = parseInt(match[2], 10) + 1;
-    return `${year}-${String(next).padStart(2, "0")}`;
-  }
-  return `${year}-01`;
 }
 
 export function computeLineItems(
@@ -336,5 +340,5 @@ export async function downloadInvoicePdf(data: InvoiceData) {
     doc.text(noteLines, marginX + 6, notesY + 16);
   }
 
-  doc.save(`invoice-${data.number}.pdf`);
+  doc.save(`${data.from.name} Invoice ${data.number}.pdf`);
 }
