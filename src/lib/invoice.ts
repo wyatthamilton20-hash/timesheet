@@ -16,6 +16,7 @@ export interface InvoiceSettings {
   taxRate: number;
   jobs: string[];
   entryJobs: Record<string, string>;
+  entryPayPeriods: Record<string, number>;
   lastInvoiceNumber: string;
   notes: string;
   downloads: InvoiceDownloadRecord[];
@@ -31,6 +32,7 @@ export interface InvoiceDownloadRecord {
   total: number;
   downloadedAt: string;
   job: string;
+  payPeriod: number | null;
 }
 
 export interface InvoiceLineItem {
@@ -60,6 +62,7 @@ export const DEFAULT_SETTINGS: InvoiceSettings = {
   taxRate: 0,
   jobs: ["Accel Event Rentals Website", "AI Consulting", "EmbedChat", "General"],
   entryJobs: {},
+  entryPayPeriods: {},
   lastInvoiceNumber: "",
   notes: "",
   downloads: [],
@@ -92,6 +95,7 @@ export function loadSettings(): InvoiceSettings {
       to: { ...DEFAULT_SETTINGS.to, ...parsed.to },
       jobs: Array.isArray(parsed.jobs) && parsed.jobs.length ? parsed.jobs : DEFAULT_SETTINGS.jobs,
       entryJobs: parsed.entryJobs ?? {},
+      entryPayPeriods: parsed.entryPayPeriods ?? {},
       downloads: Array.isArray(parsed.downloads) ? parsed.downloads : [],
     };
   } catch {

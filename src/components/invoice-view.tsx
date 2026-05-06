@@ -35,6 +35,7 @@ export function InvoiceView() {
   const [periodEnd, setPeriodEnd] = useState(format(new Date(), "yyyy-MM-dd"));
   const [newJobName, setNewJobName] = useState("");
   const [selectedJob, setSelectedJob] = useState<string>("");
+  const [selectedPayPeriod, setSelectedPayPeriod] = useState<number | null>(null);
 
   useEffect(() => {
     const loaded = loadSettings();
@@ -88,6 +89,19 @@ export function InvoiceView() {
     update({ entryJobs: next });
   }
 
+  function setEntryPayPeriod(entryId: string, periodValue: string) {
+    const next = { ...settings.entryPayPeriods };
+    if (!periodValue) delete next[entryId];
+    else next[entryId] = parseInt(periodValue, 10);
+    update({ entryPayPeriods: next });
+  }
+
+  function bulkSetPayPeriod(periodNumber: number) {
+    const next = { ...settings.entryPayPeriods };
+    for (const e of filteredEntries) next[e.id] = periodNumber;
+    update({ entryPayPeriods: next });
+  }
+
   function addJob() {
     const name = newJobName.trim();
     if (!name || settings.jobs.includes(name)) return;
@@ -104,9 +118,14 @@ export function InvoiceView() {
     [settings.terms, invoiceDate]
   );
 
+  const payPeriodFilteredEntries = useMemo(() => {
+    if (selectedPayPeriod == null) return filteredEntries;
+    return filteredEntries.filter((e) => settings.entryPayPeriods[e.id] === selectedPayPeriod);
+  }, [filteredEntries, selectedPayPeriod, settings.entryPayPeriods]);
+
   const lineItems = useMemo(
-    () => computeLineItems(filteredEntries, settings.entryJobs, state.hourlyRate, "Untagged"),
-    [filteredEntries, settings.entryJobs, state.hourlyRate]
+    () => computeLineItems(payPeriodFilteredEntries, settings.entryJobs, state.hourlyRate, "Untagged"),
+    [payPeriodFilteredEntries, settings.entryJobs, state.hourlyRate]
   );
 
   const displayedLineItems = useMemo(
@@ -148,6 +167,7 @@ export function InvoiceView() {
       total,
       downloadedAt: new Date().toISOString(),
       job: selectedJob || "All jobs",
+      payPeriod: selectedPayPeriod,
     };
     update({
       lastInvoiceNumber: invoiceNumber,
@@ -179,6 +199,23 @@ export function InvoiceView() {
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
+          <div className="space-y-1">
+            <Label className="text-xs">Pay period</Label>
+            <select
+              value={selectedPayPeriod ?? ""}
+              onChange={(e) =>
+                setSelectedPayPeriod(e.target.value ? parseInt(e.target.value, 10) : null)
+              }
+              className="h-8 rounded-lg border border-border bg-background px-2 text-sm"
+            >
+              <option value="">All periods</option>
+              {Array.from({ length: 50 }, (_, i) => i + 1).map((n) => (
+                <option key={n} value={n}>
+                  Period {n}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="space-y-1">
             <Label className="text-xs">Invoice for</Label>
             <select
@@ -293,14 +330,37 @@ export function InvoiceView() {
 
       {/* Entry tagger */}
       <Section title="Tag entries">
+        {filteredEntries.length > 0 && (
+          <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-muted-foreground">Bulk: tag all visible entries to</span>
+            <select
+              defaultValue=""
+              onChange={(e) => {
+                if (e.target.value) {
+                  bulkSetPayPeriod(parseInt(e.target.value, 10));
+                  e.currentTarget.value = "";
+                }
+              }}
+              className="h-8 rounded-lg border border-border bg-background px-2 text-sm"
+            >
+              <option value="">Pay period…</option>
+              {Array.from({ length: 50 }, (_, i) => i + 1).map((n) => (
+                <option key={n} value={n}>
+                  Period {n}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="rounded-lg border border-border/60 divide-y divide-border/60">
           {filteredEntries.length === 0 && (
             <div className="p-4 text-sm text-muted-foreground">No entries in this period.</div>
           )}
           {filteredEntries.map((e) => {
             const tag = settings.entryJobs[e.id] ?? "";
+            const period = settings.entryPayPeriods[e.id];
             return (
-              <div key={e.id} className="grid grid-cols-1 sm:grid-cols-[120px_70px_1fr_220px] gap-2 items-center p-3 text-sm">
+              <div key={e.id} className="grid grid-cols-1 sm:grid-cols-[120px_70px_1fr_120px_220px] gap-2 items-center p-3 text-sm">
                 <span className="text-muted-foreground">
                   {format(new Date(e.clockIn), "EEE MMM d")}
                 </span>
@@ -308,6 +368,19 @@ export function InvoiceView() {
                 <span className="text-muted-foreground truncate" title={e.note || "(no note)"}>
                   {e.note || <em>(no note)</em>}
                 </span>
+                <select
+                  value={period ?? ""}
+                  onChange={(ev) => setEntryPayPeriod(e.id, ev.target.value)}
+                  className="h-8 rounded-lg border border-border bg-background px-2 text-sm"
+                  title="Pay period"
+                >
+                  <option value="">— Period —</option>
+                  {Array.from({ length: 50 }, (_, i) => i + 1).map((n) => (
+                    <option key={n} value={n}>
+                      Period {n}
+                    </option>
+                  ))}
+                </select>
                 <select
                   value={tag}
                   onChange={(ev) => setEntryJob(e.id, ev.target.value)}
@@ -417,8 +490,9 @@ export function InvoiceView() {
               <thead className="bg-muted/50 text-xs uppercase tracking-wider text-muted-foreground">
                 <tr>
                   <th className="text-left px-3 py-2">Invoice #</th>
+                  <th className="text-left px-3 py-2 w-24">Pay period</th>
                   <th className="text-left px-3 py-2">Job</th>
-                  <th className="text-left px-3 py-2">Period</th>
+                  <th className="text-left px-3 py-2">Date range</th>
                   <th className="text-right px-3 py-2 w-20">Hours</th>
                   <th className="text-right px-3 py-2 w-28">Total</th>
                   <th className="text-left px-3 py-2 w-44">Downloaded</th>
@@ -429,6 +503,9 @@ export function InvoiceView() {
                 {settings.downloads.map((d) => (
                   <tr key={d.id}>
                     <td className="px-3 py-2 font-medium">{d.number}</td>
+                    <td className="px-3 py-2 text-muted-foreground">
+                      {d.payPeriod != null ? `Period ${d.payPeriod}` : "—"}
+                    </td>
                     <td className="px-3 py-2 text-muted-foreground">{d.job ?? "—"}</td>
                     <td className="px-3 py-2 text-muted-foreground">
                       {d.periodStart} → {d.periodEnd}
