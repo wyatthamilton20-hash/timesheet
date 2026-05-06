@@ -34,6 +34,7 @@ export function InvoiceView() {
   const [periodStart, setPeriodStart] = useState("");
   const [periodEnd, setPeriodEnd] = useState(format(new Date(), "yyyy-MM-dd"));
   const [newJobName, setNewJobName] = useState("");
+  const [selectedJob, setSelectedJob] = useState<string>("");
 
   useEffect(() => {
     const loaded = loadSettings();
@@ -108,11 +109,21 @@ export function InvoiceView() {
     [filteredEntries, settings.entryJobs, state.hourlyRate]
   );
 
-  const subtotal = lineItems.reduce((s, i) => s + i.amount, 0);
+  const displayedLineItems = useMemo(
+    () => (selectedJob ? lineItems.filter((i) => i.job === selectedJob) : lineItems),
+    [lineItems, selectedJob]
+  );
+
+  const invoiceLineItems = useMemo(
+    () => displayedLineItems.filter((i) => i.job !== "Untagged"),
+    [displayedLineItems]
+  );
+
+  const untaggedItem = displayedLineItems.find((i) => i.job === "Untagged");
+
+  const subtotal = invoiceLineItems.reduce((s, i) => s + i.amount, 0);
   const tax = subtotal * settings.taxRate;
   const total = subtotal + tax;
-
-  const hasUntagged = lineItems.some((i) => i.job === "Untagged");
 
   async function handleDownload() {
     await downloadInvoicePdf({
@@ -122,11 +133,11 @@ export function InvoiceView() {
       terms: settings.terms,
       from: settings.from,
       to: settings.to,
-      lineItems,
+      lineItems: invoiceLineItems,
       taxRate: settings.taxRate,
       notes: settings.notes,
     });
-    const totalHours = lineItems.reduce((s, i) => s + i.hours, 0);
+    const totalHours = invoiceLineItems.reduce((s, i) => s + i.hours, 0);
     const record: InvoiceDownloadRecord = {
       id: crypto.randomUUID(),
       number: invoiceNumber,
@@ -136,6 +147,7 @@ export function InvoiceView() {
       hours: Math.round(totalHours * 100) / 100,
       total,
       downloadedAt: new Date().toISOString(),
+      job: selectedJob || "All jobs",
     };
     update({
       lastInvoiceNumber: invoiceNumber,
@@ -166,15 +178,32 @@ export function InvoiceView() {
             {filteredEntries.length} entries · {formatCurrency(state.hourlyRate)}/hr
           </p>
         </div>
-        <Button onClick={handleDownload} disabled={hasUntagged || lineItems.length === 0}>
-          <Download className="size-4" />
-          Download PDF
-        </Button>
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="space-y-1">
+            <Label className="text-xs">Invoice for</Label>
+            <select
+              value={selectedJob}
+              onChange={(e) => setSelectedJob(e.target.value)}
+              className="h-8 rounded-lg border border-border bg-background px-2 text-sm"
+            >
+              <option value="">All jobs (combined)</option>
+              {settings.jobs.map((j) => (
+                <option key={j} value={j}>
+                  {j}
+                </option>
+              ))}
+            </select>
+          </div>
+          <Button onClick={handleDownload} disabled={invoiceLineItems.length === 0}>
+            <Download className="size-4" />
+            Download PDF
+          </Button>
+        </div>
       </div>
 
-      {hasUntagged && (
+      {untaggedItem && (
         <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
-          Some entries are untagged. Tag every entry with a job below before downloading.
+          {untaggedItem.hours.toFixed(2)} untagged hours ({formatCurrency(untaggedItem.amount)}) are excluded from this PDF. Tag them below if you want them billed.
         </div>
       )}
 
@@ -310,15 +339,17 @@ export function InvoiceView() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border/60">
-              {lineItems.length === 0 && (
+              {invoiceLineItems.length === 0 && (
                 <tr>
                   <td colSpan={4} className="px-3 py-4 text-center text-muted-foreground">
-                    Tag some entries to see line items.
+                    {selectedJob
+                      ? `No tagged entries for "${selectedJob}" in this period.`
+                      : "Tag some entries to see line items."}
                   </td>
                 </tr>
               )}
-              {lineItems.map((item) => (
-                <tr key={item.job} className={item.job === "Untagged" ? "bg-amber-500/5" : ""}>
+              {invoiceLineItems.map((item) => (
+                <tr key={item.job}>
                   <td className="px-3 py-2">
                     <div className="font-medium">{item.job}</div>
                     {item.description !== "Hours worked" && (
@@ -330,8 +361,18 @@ export function InvoiceView() {
                   <td className="text-right px-3 py-2 font-mono">${item.amount.toFixed(2)}</td>
                 </tr>
               ))}
+              {untaggedItem && (
+                <tr className="bg-amber-500/5 text-muted-foreground italic">
+                  <td className="px-3 py-2">
+                    Untagged (excluded from PDF)
+                  </td>
+                  <td className="text-center px-3 py-2 font-mono">{untaggedItem.hours.toFixed(2)}</td>
+                  <td className="text-center px-3 py-2 font-mono">—</td>
+                  <td className="text-right px-3 py-2 font-mono">—</td>
+                </tr>
+              )}
             </tbody>
-            {lineItems.length > 0 && (
+            {invoiceLineItems.length > 0 && (
               <tfoot className="border-t border-border/60 text-sm">
                 <tr>
                   <td colSpan={3} className="text-right px-3 py-1.5 text-muted-foreground">Subtotal</td>
@@ -376,6 +417,7 @@ export function InvoiceView() {
               <thead className="bg-muted/50 text-xs uppercase tracking-wider text-muted-foreground">
                 <tr>
                   <th className="text-left px-3 py-2">Invoice #</th>
+                  <th className="text-left px-3 py-2">Job</th>
                   <th className="text-left px-3 py-2">Period</th>
                   <th className="text-right px-3 py-2 w-20">Hours</th>
                   <th className="text-right px-3 py-2 w-28">Total</th>
@@ -387,6 +429,7 @@ export function InvoiceView() {
                 {settings.downloads.map((d) => (
                   <tr key={d.id}>
                     <td className="px-3 py-2 font-medium">{d.number}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{d.job ?? "—"}</td>
                     <td className="px-3 py-2 text-muted-foreground">
                       {d.periodStart} → {d.periodEnd}
                     </td>

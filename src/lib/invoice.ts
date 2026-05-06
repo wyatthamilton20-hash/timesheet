@@ -30,6 +30,7 @@ export interface InvoiceDownloadRecord {
   hours: number;
   total: number;
   downloadedAt: string;
+  job: string;
 }
 
 export interface InvoiceLineItem {
