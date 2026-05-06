@@ -12,8 +12,6 @@ import {
   saveSettings,
   computeLineItems,
   termsToDueDate,
-  entriesInRange,
-  earliestEntryDate,
   autoDetectJob,
   downloadInvoicePdf,
 } from "@/lib/invoice";
@@ -31,11 +29,10 @@ export function InvoiceView() {
   const [hydrated, setHydrated] = useState(false);
   const [invoiceNumber, setInvoiceNumber] = useState("2026-01");
   const [invoiceDate, setInvoiceDate] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [periodStart, setPeriodStart] = useState("");
-  const [periodEnd, setPeriodEnd] = useState(format(new Date(), "yyyy-MM-dd"));
   const [newJobName, setNewJobName] = useState("");
   const [selectedJob, setSelectedJob] = useState<string>("");
-  const [selectedPayPeriod, setSelectedPayPeriod] = useState<number | null>(null);
+  type PayPeriodFilter = number | "all" | "untagged";
+  const [selectedPayPeriod, setSelectedPayPeriod] = useState<PayPeriodFilter>("all");
 
   useEffect(() => {
     const loaded = loadSettings();
@@ -44,24 +41,28 @@ export function InvoiceView() {
     setHydrated(true);
   }, []);
 
-  // Set period start once entries hydrate
-  useEffect(() => {
-    if (mounted && !periodStart && state.entries.length) {
-      setPeriodStart(earliestEntryDate(state.entries));
-    }
-  }, [mounted, state.entries, periodStart]);
+  const allEntries = useMemo(
+    () =>
+      [...state.entries]
+        .filter((e) => e.clockOut)
+        .sort((a, b) => new Date(a.clockIn).getTime() - new Date(b.clockIn).getTime()),
+    [state.entries]
+  );
 
-  const filteredEntries = useMemo(() => {
-    if (!periodStart || !periodEnd) return [];
-    return entriesInRange(state.entries, periodStart, periodEnd);
-  }, [state.entries, periodStart, periodEnd]);
+  const visibleEntries = useMemo(() => {
+    if (selectedPayPeriod === "all") return allEntries;
+    if (selectedPayPeriod === "untagged") {
+      return allEntries.filter((e) => settings.entryPayPeriods[e.id] == null);
+    }
+    return allEntries.filter((e) => settings.entryPayPeriods[e.id] === selectedPayPeriod);
+  }, [allEntries, selectedPayPeriod, settings.entryPayPeriods]);
 
   // Auto-tag entries with a known keyword match if not already tagged
   useEffect(() => {
     if (!hydrated) return;
     let dirty = false;
     const next = { ...settings.entryJobs };
-    for (const e of filteredEntries) {
+    for (const e of allEntries) {
       if (!next[e.id]) {
         const guess = autoDetectJob(e.note, settings.jobs);
         if (guess) {
@@ -72,7 +73,7 @@ export function InvoiceView() {
     }
     if (dirty) update({ entryJobs: next });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated, filteredEntries, settings.jobs]);
+  }, [hydrated, allEntries, settings.jobs]);
 
   function update(patch: Partial<InvoiceSettings>) {
     setSettings((prev) => {
@@ -98,7 +99,7 @@ export function InvoiceView() {
 
   function bulkSetPayPeriod(periodNumber: number) {
     const next = { ...settings.entryPayPeriods };
-    for (const e of filteredEntries) next[e.id] = periodNumber;
+    for (const e of visibleEntries) next[e.id] = periodNumber;
     update({ entryPayPeriods: next });
   }
 
@@ -118,14 +119,9 @@ export function InvoiceView() {
     [settings.terms, invoiceDate]
   );
 
-  const payPeriodFilteredEntries = useMemo(() => {
-    if (selectedPayPeriod == null) return filteredEntries;
-    return filteredEntries.filter((e) => settings.entryPayPeriods[e.id] === selectedPayPeriod);
-  }, [filteredEntries, selectedPayPeriod, settings.entryPayPeriods]);
-
   const lineItems = useMemo(
-    () => computeLineItems(payPeriodFilteredEntries, settings.entryJobs, state.hourlyRate, "Untagged"),
-    [payPeriodFilteredEntries, settings.entryJobs, state.hourlyRate]
+    () => computeLineItems(visibleEntries, settings.entryJobs, state.hourlyRate, "Untagged"),
+    [visibleEntries, settings.entryJobs, state.hourlyRate]
   );
 
   const displayedLineItems = useMemo(
@@ -157,6 +153,21 @@ export function InvoiceView() {
       notes: settings.notes,
     });
     const totalHours = invoiceLineItems.reduce((s, i) => s + i.hours, 0);
+    const billedEntryIds = new Set(
+      visibleEntries
+        .filter((e) => {
+          const job = settings.entryJobs[e.id];
+          if (!job) return false;
+          if (selectedJob) return job === selectedJob;
+          return true;
+        })
+        .map((e) => e.id)
+    );
+    const billedDates = visibleEntries
+      .filter((e) => billedEntryIds.has(e.id))
+      .map((e) => new Date(e.clockIn).getTime());
+    const periodStart = billedDates.length ? format(new Date(Math.min(...billedDates)), "yyyy-MM-dd") : "";
+    const periodEnd = billedDates.length ? format(new Date(Math.max(...billedDates)), "yyyy-MM-dd") : "";
     const record: InvoiceDownloadRecord = {
       id: crypto.randomUUID(),
       number: invoiceNumber,
@@ -167,7 +178,7 @@ export function InvoiceView() {
       total,
       downloadedAt: new Date().toISOString(),
       job: selectedJob || "All jobs",
-      payPeriod: selectedPayPeriod,
+      payPeriod: typeof selectedPayPeriod === "number" ? selectedPayPeriod : null,
     };
     update({
       lastInvoiceNumber: invoiceNumber,
@@ -195,20 +206,23 @@ export function InvoiceView() {
         <div>
           <h2 className="text-xl font-semibold tracking-tight">Invoice</h2>
           <p className="text-sm text-muted-foreground">
-            {filteredEntries.length} entries · {formatCurrency(state.hourlyRate)}/hr
+            {visibleEntries.length} entries · {formatCurrency(state.hourlyRate)}/hr
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
           <div className="space-y-1">
             <Label className="text-xs">Pay period</Label>
             <select
-              value={selectedPayPeriod ?? ""}
-              onChange={(e) =>
-                setSelectedPayPeriod(e.target.value ? parseInt(e.target.value, 10) : null)
-              }
+              value={String(selectedPayPeriod)}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "all" || v === "untagged") setSelectedPayPeriod(v);
+                else setSelectedPayPeriod(parseInt(v, 10));
+              }}
               className="h-8 rounded-lg border border-border bg-background px-2 text-sm"
             >
-              <option value="">All periods</option>
+              <option value="all">All periods</option>
+              <option value="untagged">Untagged</option>
               {Array.from({ length: 50 }, (_, i) => i + 1).map((n) => (
                 <option key={n} value={n}>
                   Period {n}
@@ -256,8 +270,6 @@ export function InvoiceView() {
             }}
           />
           <Field label="Invoice date" type="date" value={invoiceDate} onChange={setInvoiceDate} />
-          <Field label="Period start" type="date" value={periodStart} onChange={setPeriodStart} />
-          <Field label="Period end" type="date" value={periodEnd} onChange={setPeriodEnd} />
           <Field
             label="Terms"
             value={settings.terms}
@@ -330,9 +342,11 @@ export function InvoiceView() {
 
       {/* Entry tagger */}
       <Section title="Tag entries">
-        {filteredEntries.length > 0 && (
+        {visibleEntries.length > 0 && (
           <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
-            <span className="text-muted-foreground">Bulk: tag all visible entries to</span>
+            <span className="text-muted-foreground">
+              Bulk: tag all {visibleEntries.length} visible {visibleEntries.length === 1 ? "entry" : "entries"} to
+            </span>
             <select
               defaultValue=""
               onChange={(e) => {
@@ -353,10 +367,16 @@ export function InvoiceView() {
           </div>
         )}
         <div className="rounded-lg border border-border/60 divide-y divide-border/60">
-          {filteredEntries.length === 0 && (
-            <div className="p-4 text-sm text-muted-foreground">No entries in this period.</div>
+          {visibleEntries.length === 0 && (
+            <div className="p-4 text-sm text-muted-foreground">
+              {selectedPayPeriod === "untagged"
+                ? "No untagged entries — every entry has a pay period."
+                : selectedPayPeriod === "all"
+                  ? "No entries yet."
+                  : `No entries tagged with Period ${selectedPayPeriod}.`}
+            </div>
           )}
-          {filteredEntries.map((e) => {
+          {visibleEntries.map((e) => {
             const tag = settings.entryJobs[e.id] ?? "";
             const period = settings.entryPayPeriods[e.id];
             return (
