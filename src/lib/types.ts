@@ -3,6 +3,8 @@ export interface TimeEntry {
   clockIn: string;
   clockOut: string | null;
   note: string;
+  payPeriod?: number | null;
+  job?: string;
 }
 
 export interface TimesheetState {

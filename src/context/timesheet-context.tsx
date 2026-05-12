@@ -11,16 +11,18 @@ import {
 } from "react";
 import { type TimesheetState, type TimeEntry } from "@/lib/types";
 import { DEFAULT_RATE, STORAGE_KEY } from "@/lib/constants";
+import { loadSettings, type InvoiceSettings } from "@/lib/invoice";
 
 interface AirtableEntry extends TimeEntry {
   _airtableId?: string;
 }
 
 type Action =
-  | { type: "CLOCK_IN"; payload: { id: string; clockIn: string } }
+  | { type: "CLOCK_IN"; payload: { id: string; clockIn: string; job?: string; payPeriod?: number | null } }
   | { type: "CLOCK_OUT"; payload: { id: string; clockOut: string } }
   | { type: "DELETE_ENTRY"; payload: { id: string } }
   | { type: "EDIT_ENTRY"; payload: TimeEntry }
+  | { type: "MANUAL_ENTRY"; payload: TimeEntry }
   | { type: "SET_RATE"; payload: number }
   | { type: "CLEAR_ALL" }
   | { type: "HYDRATE"; payload: TimesheetState };
@@ -47,8 +49,15 @@ function reducer(state: AirtableState, action: Action): AirtableState {
             clockIn: action.payload.clockIn,
             clockOut: null,
             note: "",
+            job: action.payload.job,
+            payPeriod: action.payload.payPeriod,
           },
         ],
+      };
+    case "MANUAL_ENTRY":
+      return {
+        ...state,
+        entries: [...state.entries, action.payload],
       };
     case "CLOCK_OUT":
       return {
@@ -86,6 +95,7 @@ interface TimesheetContextType {
   state: TimesheetState;
   dispatch: React.Dispatch<Action>;
   mounted: boolean;
+  invoiceSettings: InvoiceSettings | null;
 }
 
 const TimesheetContext = createContext<TimesheetContextType | null>(null);
@@ -93,14 +103,19 @@ const TimesheetContext = createContext<TimesheetContextType | null>(null);
 export function TimesheetProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [mounted, setMounted] = useState(false);
+  const [invoiceSettings, setInvoiceSettings] = useState<InvoiceSettings | null>(null);
 
-  // Load entries from Airtable on mount
+  // Load entries and settings from Airtable on mount
   useEffect(() => {
-    async function loadEntries() {
+    async function loadAll() {
       try {
-        const res = await fetch("/api/entries");
-        const entries = await res.json();
+        const [entriesRes, settings] = await Promise.all([
+          fetch("/api/entries"),
+          loadSettings(),
+        ]);
+        const entries = await entriesRes.json();
         dispatch({ type: "HYDRATE", payload: { entries, hourlyRate: state.hourlyRate } });
+        setInvoiceSettings(settings);
       } catch (error) {
         console.error("Error loading from Airtable:", error);
       }
@@ -116,7 +131,7 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
       } catch {}
       setMounted(true);
     }
-    loadEntries();
+    loadAll();
   }, []);
 
   // Save hourly rate to localStorage (lightweight setting)
@@ -144,12 +159,26 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
                 clockIn: action.payload.clockIn,
                 clockOut: null,
                 note: "",
+                job: action.payload.job || "",
+                payPeriod: action.payload.payPeriod ?? null,
               }),
             });
             // Refresh to get _airtableId
             const res = await fetch("/api/entries");
             const entries = await res.json();
             dispatch({ type: "HYDRATE", payload: { entries, hourlyRate: state.hourlyRate } });
+            break;
+          }
+          case "MANUAL_ENTRY": {
+            await fetch("/api/entries", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(action.payload),
+            });
+            // Refresh to get _airtableId
+            const res2 = await fetch("/api/entries");
+            const entries2 = await res2.json();
+            dispatch({ type: "HYDRATE", payload: { entries: entries2, hourlyRate: state.hourlyRate } });
             break;
           }
           case "CLOCK_OUT": {
@@ -210,7 +239,7 @@ export function TimesheetProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <TimesheetContext.Provider value={{ state: state as TimesheetState, dispatch: syncedDispatch as unknown as React.Dispatch<Action>, mounted }}>
+    <TimesheetContext.Provider value={{ state: state as TimesheetState, dispatch: syncedDispatch as unknown as React.Dispatch<Action>, mounted, invoiceSettings }}>
       {children}
     </TimesheetContext.Provider>
   );

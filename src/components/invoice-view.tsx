@@ -15,6 +15,7 @@ import {
   autoDetectJob,
   downloadInvoicePdf,
 } from "@/lib/invoice";
+import type { TimeEntry } from "@/lib/types";
 import { getDurationMinutes, formatDuration, formatCurrency } from "@/lib/time-utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +25,7 @@ import { Download, Plus, Trash2, X } from "lucide-react";
 const UNTAGGED = "— Select job —";
 
 export function InvoiceView() {
-  const { state, mounted } = useTimesheet();
+  const { state, mounted, dispatch } = useTimesheet();
   const [settings, setSettings] = useState<InvoiceSettings>(DEFAULT_SETTINGS);
   const [hydrated, setHydrated] = useState(false);
   const [invoiceNumber, setInvoiceNumber] = useState("2026-01");
@@ -35,10 +36,11 @@ export function InvoiceView() {
   const [selectedPayPeriod, setSelectedPayPeriod] = useState<PayPeriodFilter>("all");
 
   useEffect(() => {
-    const loaded = loadSettings();
-    setSettings(loaded);
-    setInvoiceNumber(loaded.lastInvoiceNumber || "2026-01");
-    setHydrated(true);
+    loadSettings().then((loaded) => {
+      setSettings(loaded);
+      setInvoiceNumber(loaded.lastInvoiceNumber || "2026-01");
+      setHydrated(true);
+    });
   }, []);
 
   const allEntries = useMemo(
@@ -52,55 +54,51 @@ export function InvoiceView() {
   const visibleEntries = useMemo(() => {
     if (selectedPayPeriod === "all") return allEntries;
     if (selectedPayPeriod === "untagged") {
-      return allEntries.filter((e) => settings.entryPayPeriods[e.id] == null);
+      return allEntries.filter((e) => e.payPeriod == null);
     }
-    return allEntries.filter((e) => settings.entryPayPeriods[e.id] === selectedPayPeriod);
-  }, [allEntries, selectedPayPeriod, settings.entryPayPeriods]);
+    return allEntries.filter((e) => e.payPeriod === selectedPayPeriod);
+  }, [allEntries, selectedPayPeriod]);
 
   // Auto-tag entries with a known keyword match if not already tagged
   useEffect(() => {
     if (!hydrated) return;
-    let dirty = false;
-    const next = { ...settings.entryJobs };
     for (const e of allEntries) {
-      if (!next[e.id]) {
+      if (!e.job) {
         const guess = autoDetectJob(e.note, settings.jobs);
         if (guess) {
-          next[e.id] = guess;
-          dirty = true;
+          dispatch({ type: "EDIT_ENTRY", payload: { ...e, job: guess } });
         }
       }
     }
-    if (dirty) update({ entryJobs: next });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated, allEntries, settings.jobs]);
+  }, [hydrated]);
 
   function update(patch: Partial<InvoiceSettings>) {
     setSettings((prev) => {
       const next = { ...prev, ...patch };
-      saveSettings(next);
+      void saveSettings(next);
       return next;
     });
   }
 
-  function setEntryJob(entryId: string, job: string) {
-    const next = { ...settings.entryJobs };
-    if (job === UNTAGGED) delete next[entryId];
-    else next[entryId] = job;
-    update({ entryJobs: next });
+  function setEntryJob(entry: TimeEntry, job: string) {
+    dispatch({
+      type: "EDIT_ENTRY",
+      payload: { ...entry, job: job === UNTAGGED ? "" : job },
+    });
   }
 
-  function setEntryPayPeriod(entryId: string, periodValue: string) {
-    const next = { ...settings.entryPayPeriods };
-    if (!periodValue) delete next[entryId];
-    else next[entryId] = parseInt(periodValue, 10);
-    update({ entryPayPeriods: next });
+  function setEntryPayPeriod(entry: TimeEntry, periodValue: string) {
+    dispatch({
+      type: "EDIT_ENTRY",
+      payload: { ...entry, payPeriod: periodValue ? parseInt(periodValue, 10) : null },
+    });
   }
 
   function bulkSetPayPeriod(periodNumber: number) {
-    const next = { ...settings.entryPayPeriods };
-    for (const e of visibleEntries) next[e.id] = periodNumber;
-    update({ entryPayPeriods: next });
+    for (const e of visibleEntries) {
+      dispatch({ type: "EDIT_ENTRY", payload: { ...e, payPeriod: periodNumber } });
+    }
   }
 
   function addJob() {
@@ -120,8 +118,8 @@ export function InvoiceView() {
   );
 
   const lineItems = useMemo(
-    () => computeLineItems(visibleEntries, settings.entryJobs, state.hourlyRate, "Untagged"),
-    [visibleEntries, settings.entryJobs, state.hourlyRate]
+    () => computeLineItems(visibleEntries, state.hourlyRate, "Untagged"),
+    [visibleEntries, state.hourlyRate]
   );
 
   const displayedLineItems = useMemo(
@@ -156,9 +154,8 @@ export function InvoiceView() {
     const billedEntryIds = new Set(
       visibleEntries
         .filter((e) => {
-          const job = settings.entryJobs[e.id];
-          if (!job) return false;
-          if (selectedJob) return job === selectedJob;
+          if (!e.job) return false;
+          if (selectedJob) return e.job === selectedJob;
           return true;
         })
         .map((e) => e.id)
@@ -376,46 +373,42 @@ export function InvoiceView() {
                   : `No entries tagged with Period ${selectedPayPeriod}.`}
             </div>
           )}
-          {visibleEntries.map((e) => {
-            const tag = settings.entryJobs[e.id] ?? "";
-            const period = settings.entryPayPeriods[e.id];
-            return (
-              <div key={e.id} className="grid grid-cols-1 sm:grid-cols-[120px_70px_1fr_120px_220px] gap-2 items-center p-3 text-sm">
-                <span className="text-muted-foreground">
-                  {format(new Date(e.clockIn), "EEE MMM d")}
-                </span>
-                <span className="font-mono text-xs">{formatDuration(getDurationMinutes(e))}</span>
-                <span className="text-muted-foreground truncate" title={e.note || "(no note)"}>
-                  {e.note || <em>(no note)</em>}
-                </span>
-                <select
-                  value={period ?? ""}
-                  onChange={(ev) => setEntryPayPeriod(e.id, ev.target.value)}
-                  className="h-8 rounded-lg border border-border bg-background px-2 text-sm"
-                  title="Pay period"
-                >
-                  <option value="">— Period —</option>
-                  {Array.from({ length: 50 }, (_, i) => i + 1).map((n) => (
-                    <option key={n} value={n}>
-                      Period {n}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={tag}
-                  onChange={(ev) => setEntryJob(e.id, ev.target.value)}
-                  className="h-8 rounded-lg border border-border bg-background px-2 text-sm"
-                >
-                  <option value="">{UNTAGGED}</option>
-                  {settings.jobs.map((j) => (
-                    <option key={j} value={j}>
-                      {j}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            );
-          })}
+          {visibleEntries.map((e) => (
+            <div key={e.id} className="grid grid-cols-1 sm:grid-cols-[120px_70px_1fr_120px_220px] gap-2 items-center p-3 text-sm">
+              <span className="text-muted-foreground">
+                {format(new Date(e.clockIn), "EEE MMM d")}
+              </span>
+              <span className="font-mono text-xs">{formatDuration(getDurationMinutes(e))}</span>
+              <span className="text-muted-foreground truncate" title={e.note || "(no note)"}>
+                {e.note || <em>(no note)</em>}
+              </span>
+              <select
+                value={e.payPeriod ?? ""}
+                onChange={(ev) => setEntryPayPeriod(e, ev.target.value)}
+                className="h-8 rounded-lg border border-border bg-background px-2 text-sm"
+                title="Pay period"
+              >
+                <option value="">— Period —</option>
+                {Array.from({ length: 50 }, (_, i) => i + 1).map((n) => (
+                  <option key={n} value={n}>
+                    Period {n}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={e.job ?? ""}
+                onChange={(ev) => setEntryJob(e, ev.target.value)}
+                className="h-8 rounded-lg border border-border bg-background px-2 text-sm"
+              >
+                <option value="">{UNTAGGED}</option>
+                {settings.jobs.map((j) => (
+                  <option key={j} value={j}>
+                    {j}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
         </div>
       </Section>
 

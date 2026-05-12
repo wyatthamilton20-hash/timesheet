@@ -15,8 +15,6 @@ export interface InvoiceSettings {
   terms: string;
   taxRate: number;
   jobs: string[];
-  entryJobs: Record<string, string>;
-  entryPayPeriods: Record<string, number>;
   lastInvoiceNumber: string;
   notes: string;
   downloads: InvoiceDownloadRecord[];
@@ -43,7 +41,6 @@ export interface InvoiceLineItem {
   amount: number;
 }
 
-export const INVOICE_STORAGE_KEY = "timesheet-invoice";
 
 export const DEFAULT_SETTINGS: InvoiceSettings = {
   from: {
@@ -61,8 +58,6 @@ export const DEFAULT_SETTINGS: InvoiceSettings = {
   terms: "Net 30",
   taxRate: 0,
   jobs: ["Accel Event Rentals Website", "AI Consulting", "EmbedChat", "General"],
-  entryJobs: {},
-  entryPayPeriods: {},
   lastInvoiceNumber: "",
   notes: "",
   downloads: [],
@@ -74,6 +69,44 @@ const KEYWORD_MAP: Array<{ keyword: RegExp; job: string }> = [
   { keyword: /\bai\b|keith/i, job: "AI Consulting" },
 ];
 
+export function getPeriodEndDate(date: Date, downloads: InvoiceDownloadRecord[]): { endDate: Date; period: number } | null {
+  const anchors = downloads
+    .filter((d) => d.payPeriod != null && d.periodEnd)
+    .sort((a, b) => new Date(b.periodEnd).getTime() - new Date(a.periodEnd).getTime());
+
+  if (!anchors.length) return null;
+
+  const anchor = anchors[0];
+  const ae = new Date(anchor.periodEnd + "T00:00:00");
+  const anchorOnly = new Date(ae.getFullYear(), ae.getMonth(), ae.getDate());
+  const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+  const daysDiff = Math.round((dateOnly.getTime() - anchorOnly.getTime()) / 86400000);
+  if (daysDiff <= 0) return { endDate: anchorOnly, period: anchor.payPeriod! };
+
+  const periodsAhead = Math.ceil(daysDiff / 14);
+  const endDate = new Date(anchorOnly);
+  endDate.setDate(endDate.getDate() + periodsAhead * 14);
+  return { endDate, period: anchor.payPeriod! + periodsAhead };
+}
+
+export function computePayPeriod(date: Date, downloads: InvoiceDownloadRecord[]): number | null {
+  const anchors = downloads
+    .filter((d) => d.payPeriod != null && d.periodEnd)
+    .sort((a, b) => new Date(b.periodEnd).getTime() - new Date(a.periodEnd).getTime());
+
+  if (!anchors.length) return null;
+
+  const anchor = anchors[0];
+  const ae = new Date(anchor.periodEnd + "T00:00:00");
+  const anchorOnly = new Date(ae.getFullYear(), ae.getMonth(), ae.getDate());
+  const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+  const daysDiff = Math.round((dateOnly.getTime() - anchorOnly.getTime()) / 86400000);
+  if (daysDiff <= 0) return anchor.payPeriod!;
+  return anchor.payPeriod! + Math.ceil(daysDiff / 14);
+}
+
 export function autoDetectJob(note: string, knownJobs: string[]): string | null {
   if (!note) return null;
   for (const { keyword, job } of KEYWORD_MAP) {
@@ -82,20 +115,18 @@ export function autoDetectJob(note: string, knownJobs: string[]): string | null 
   return null;
 }
 
-export function loadSettings(): InvoiceSettings {
-  if (typeof window === "undefined") return DEFAULT_SETTINGS;
+export async function loadSettings(): Promise<InvoiceSettings> {
   try {
-    const raw = window.localStorage.getItem(INVOICE_STORAGE_KEY);
-    if (!raw) return DEFAULT_SETTINGS;
-    const parsed = JSON.parse(raw);
+    const res = await fetch("/api/settings", { cache: "no-store" });
+    if (!res.ok) return DEFAULT_SETTINGS;
+    const parsed = await res.json();
+    if (!parsed) return DEFAULT_SETTINGS;
     return {
       ...DEFAULT_SETTINGS,
       ...parsed,
       from: { ...DEFAULT_SETTINGS.from, ...parsed.from },
       to: { ...DEFAULT_SETTINGS.to, ...parsed.to },
       jobs: Array.isArray(parsed.jobs) && parsed.jobs.length ? parsed.jobs : DEFAULT_SETTINGS.jobs,
-      entryJobs: parsed.entryJobs ?? {},
-      entryPayPeriods: parsed.entryPayPeriods ?? {},
       downloads: Array.isArray(parsed.downloads) ? parsed.downloads : [],
     };
   } catch {
@@ -103,23 +134,25 @@ export function loadSettings(): InvoiceSettings {
   }
 }
 
-export function saveSettings(settings: InvoiceSettings) {
-  if (typeof window === "undefined") return;
+export async function saveSettings(settings: InvoiceSettings): Promise<void> {
   try {
-    window.localStorage.setItem(INVOICE_STORAGE_KEY, JSON.stringify(settings));
+    await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(settings),
+    });
   } catch {}
 }
 
 export function computeLineItems(
   entries: TimeEntry[],
-  entryJobs: Record<string, string>,
   rate: number,
   defaultJob: string
 ): InvoiceLineItem[] {
   const groups = new Map<string, { minutes: number; notes: Set<string> }>();
   for (const entry of entries) {
     if (!entry.clockOut) continue;
-    const job = entryJobs[entry.id] || defaultJob;
+    const job = entry.job || defaultJob;
     const group = groups.get(job) ?? { minutes: 0, notes: new Set<string>() };
     group.minutes += getDurationMinutes(entry);
     if (entry.note?.trim()) group.notes.add(entry.note.trim());

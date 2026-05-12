@@ -28,6 +28,8 @@ export async function GET() {
     clockIn: r.fields.clockIn || "",
     clockOut: r.fields.clockOut || null,
     note: r.fields.note || "",
+    payPeriod: r.fields.payPeriod ? Number(r.fields.payPeriod) : null,
+    job: r.fields.job || "",
     _airtableId: r.id,
   }));
 
@@ -46,6 +48,8 @@ export async function POST(req: NextRequest) {
         clockIn: body.clockIn,
         clockOut: body.clockOut || null,
         note: body.note || "",
+        payPeriod: body.payPeriod ?? null,
+        job: body.job || "",
       },
     }),
   });
@@ -67,6 +71,8 @@ export async function PATCH(req: NextRequest) {
         clockIn: fields.clockIn,
         clockOut: fields.clockOut || null,
         note: fields.note || "",
+        payPeriod: fields.payPeriod ?? null,
+        job: fields.job || "",
       },
     }),
   });

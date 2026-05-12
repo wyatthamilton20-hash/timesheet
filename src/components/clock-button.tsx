@@ -1,14 +1,18 @@
 "use client";
 
+import { useState } from "react";
 import { useTimesheet } from "@/context/timesheet-context";
 import { getActiveEntry } from "@/lib/time-utils";
+import { computePayPeriod } from "@/lib/invoice";
 import { RunningTimer } from "./running-timer";
 import { Play, Square } from "lucide-react";
 
 export function ClockButton() {
-  const { state, dispatch, mounted } = useTimesheet();
+  const { state, dispatch, mounted, invoiceSettings } = useTimesheet();
   const activeEntry = getActiveEntry(state.entries);
   const isClockedIn = !!activeEntry;
+  const jobs = invoiceSettings?.jobs ?? [];
+  const [selectedJob, setSelectedJob] = useState("");
 
   function handleClick() {
     if (isClockedIn && activeEntry) {
@@ -17,10 +21,20 @@ export function ClockButton() {
         payload: { id: activeEntry.id, clockOut: new Date().toISOString() },
       });
     } else {
+      const now = new Date();
+      const payPeriod = invoiceSettings
+        ? computePayPeriod(now, invoiceSettings.downloads)
+        : null;
       dispatch({
         type: "CLOCK_IN",
-        payload: { id: crypto.randomUUID(), clockIn: new Date().toISOString() },
+        payload: {
+          id: crypto.randomUUID(),
+          clockIn: now.toISOString(),
+          job: selectedJob || undefined,
+          payPeriod,
+        },
       });
+      setSelectedJob("");
     }
   }
 
@@ -34,6 +48,20 @@ export function ClockButton() {
 
   return (
     <div className="flex flex-col items-center gap-4 py-6">
+      {!isClockedIn && jobs.length > 0 && (
+        <select
+          value={selectedJob}
+          onChange={(e) => setSelectedJob(e.target.value)}
+          className="h-10 w-full max-w-sm rounded-xl border border-border bg-background px-3 text-sm"
+        >
+          <option value="">— Select what you&apos;re working on —</option>
+          {jobs.map((j) => (
+            <option key={j} value={j}>
+              {j}
+            </option>
+          ))}
+        </select>
+      )}
       <button
         onClick={handleClick}
         className={`
@@ -53,6 +81,11 @@ export function ClockButton() {
           <>
             <Square className="size-5" />
             Clock Out
+            {activeEntry.job && (
+              <span className="absolute bottom-3 text-xs font-normal opacity-75">
+                {activeEntry.job}
+              </span>
+            )}
           </>
         ) : (
           <>

@@ -3,17 +3,20 @@
 import { useState } from "react";
 import { format } from "date-fns";
 import { useTimesheet } from "@/context/timesheet-context";
+import { computePayPeriod } from "@/lib/invoice";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus, X } from "lucide-react";
 
 export function AddEntryForm({ date }: { date: Date }) {
-  const { dispatch } = useTimesheet();
+  const { dispatch, invoiceSettings } = useTimesheet();
+  const jobs = invoiceSettings?.jobs ?? [];
   const [open, setOpen] = useState(false);
   const [clockIn, setClockIn] = useState("09:00");
   const [clockOut, setClockOut] = useState("17:00");
   const [note, setNote] = useState("");
+  const [selectedJob, setSelectedJob] = useState("");
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -22,18 +25,24 @@ export function AddEntryForm({ date }: { date: Date }) {
     const newClockOut = new Date(`${dateStr}T${clockOut}:00`).toISOString();
 
     const id = crypto.randomUUID();
+    const payPeriod = invoiceSettings
+      ? computePayPeriod(new Date(newClockIn), invoiceSettings.downloads)
+      : null;
 
-    // Create the entry, then immediately update it with clockOut and note
     dispatch({
-      type: "CLOCK_IN",
-      payload: { id, clockIn: newClockIn },
-    });
-    dispatch({
-      type: "EDIT_ENTRY",
-      payload: { id, clockIn: newClockIn, clockOut: newClockOut, note },
+      type: "MANUAL_ENTRY",
+      payload: {
+        id,
+        clockIn: newClockIn,
+        clockOut: newClockOut,
+        note,
+        job: selectedJob || undefined,
+        payPeriod,
+      },
     });
 
     setNote("");
+    setSelectedJob("");
     setOpen(false);
   }
 
@@ -95,6 +104,26 @@ export function AddEntryForm({ date }: { date: Date }) {
             required
           />
         </div>
+        {jobs.length > 0 && (
+          <div className="space-y-1">
+            <Label htmlFor="add-job" className="text-xs">
+              Job
+            </Label>
+            <select
+              id="add-job"
+              value={selectedJob}
+              onChange={(e) => setSelectedJob(e.target.value)}
+              className="h-9 rounded-lg border border-border bg-background px-2 text-sm w-44"
+            >
+              <option value="">— Select job —</option>
+              {jobs.map((j) => (
+                <option key={j} value={j}>
+                  {j}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="space-y-1 flex-1 min-w-[120px]">
           <Label htmlFor="add-note" className="text-xs">
             Note
